@@ -1,0 +1,33 @@
+# One-off diagnostic: verifies the BCR_PUBLISH_TOKEN secret is a live token.
+# Safe to delete after use; prints only the HTTP status and token scopes.
+name: Token check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify BCR_PUBLISH_TOKEN
+        env:
+          TOK: ${{ secrets.BCR_PUBLISH_TOKEN }}
+        run: |
+          code=$(curl -s -o /tmp/user.json -w "%{http_code}" \
+            -H "Authorization: token $TOK" https://api.github.com/user)
+          echo "GET /user with BCR_PUBLISH_TOKEN -> HTTP $code"
+          if [ "$code" = "200" ]; then
+            echo "token login: $(sed -n 's/.*"login": *"\([^"]*\)".*/\1/p' /tmp/user.json | head -1)"
+            curl -sI -H "Authorization: token $TOK" https://api.github.com/user \
+              | grep -i x-oauth-scopes || true
+            # also verify the two capabilities publish-to-bcr needs
+            fork=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: token $TOK" \
+              https://api.github.com/repos/loseall/bazel-central-registry)
+            echo "GET fork repo -> HTTP $fork (200 = can push a branch there)"
+          else
+            echo "TOKEN INVALID/REVOKED - replace the secret"
+          fi
