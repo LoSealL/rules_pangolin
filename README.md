@@ -75,6 +75,31 @@ Consumers must compile as C++17 (upstream `CMAKE_CXX_STANDARD 17`).
   `build_file` labels), so editing an overlay changes the repository cache
   key; no manual `bazel clean` is needed.
 
+## Examples
+
+`examples/` is a standalone workspace with two runnable demo programs:
+
+```
+cd examples
+bazelisk build //...
+# run until the window is closed, or pass a second limit for a smoke test
+./bazel-bin/plot3d
+./bazel-bin/interactive
+```
+
+- `plot3d` - pure 3D drawing: ground grid, coordinate axes, a spinning
+  coloured cube and a coloured spiral point cloud, no input handling.
+- `interactive` - control panel (`pangolin::Var` sliders/toggles),
+  mouse-orbit camera (`Handler3D`), left click drops a point at the clicked
+  world position, `c` clears points, space toggles the spin animation.
+
+Both accept an optional `seconds` argument to exit automatically, which
+makes them usable as smoke tests:
+
+```
+./bazel-bin/plot3d 2
+```
+
 ## Test
 
 `test/` is a standalone consumer workspace:

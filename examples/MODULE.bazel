@@ -1,0 +1,13 @@
+module(name = "rules_pangolin_examples")
+
+bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "rules_pangolin", version = "0.1.0")
+
+local_path_override(
+    module_name = "rules_pangolin",
+    path = "..",
+)
+
+pangolin = use_extension("@rules_pangolin//pangolin:extensions.bzl", "pangolin_extension")
+pangolin.install()
+use_repo(pangolin, "pangolin")
