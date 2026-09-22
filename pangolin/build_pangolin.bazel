@@ -1,0 +1,554 @@
+# Bazel overlay for Pangolin v0.9.3 (https://github.com/stevenlovegrove/Pangolin),
+# applied via git_repository(build_file = ...) in pangolin/repositories.bzl.
+#
+# The upstream project is built with CMake; this file mirrors its per-component
+# target graph (components/*/CMakeLists.txt) as cc_library targets with the
+# CMake code generation steps (embedded fonts/shaders, factory registry
+# headers) replaced by the gen_embed tool from the sibling pangolin_tools
+# repository.
+#
+# Platform policy follows upstream CMake:
+#   - Windows: Win32 windowing + GLEW (built from source in @glew)
+#   - Linux:   X11/EGL windowing + system libepoxy (headers and lib come
+#              from the system; requires libepoxy-dev/libegl-dev/libx11-dev)
+# Optional image/video codec backends (png/jpeg/tiff/openexr/lz4/zstd/raw,
+# ffmpeg, realsense, ...) are disabled, matching a CMake build where none of
+# those packages are found. Only the C++ libraries are built - pango_python
+# is intentionally excluded.
+
+load("@pangolin_tools//:embed.bzl", "embed_binary_files", "embed_shader_files", "factory_registry_header")
+
+package(default_visibility = ["//visibility:public"])
+
+WINDOWS = "@platforms//os:windows"
+
+CXX17_COPTS = select({
+    WINDOWS: [
+        "/std:c++17",
+        "/bigobj",
+        "/utf-8",
+        "/Zc:__cplusplus",
+    ],
+    "//conditions:default": [
+        "-std=c++17",
+        "-pthread",
+    ],
+})
+
+# ---------------------------------------------------------------------------
+# Generated sources (upstream: cmake/EmbedBinaryFiles.cmake, EmbedShaderFiles.cmake)
+# ---------------------------------------------------------------------------
+
+embed_binary_files(
+    name = "gen_pango_fonts",
+    srcs = ["components/pango_opengl/src/fonts/AnonymousPro.ttf"],
+    out = "gen/pango_opengl/fonts.cpp",
+)
+
+embed_shader_files(
+    name = "gen_pango_shaders",
+    srcs = glob(["components/pango_opengl/shaders/*.glsl*"]),
+    out = "gen/pango_opengl/shaders.cpp",
+    prefix = "components/pango_opengl/shaders",
+)
+
+# ---------------------------------------------------------------------------
+# Generated factory registry headers (upstream: cmake/PangolinFactory.cmake).
+# Keys must match the PANGOLIN_REGISTER_FACTORY symbols compiled on each OS.
+# ---------------------------------------------------------------------------
+
+factory_registry_header(
+    name = "gen_window_factories",
+    interface = "WindowInterface",
+    factories = select({
+        WINDOWS: ["WinWindow"],
+        "//conditions:default": ["X11Window"],
+    }),
+    out = "gen/pangolin/factory/RegisterFactoriesWindowInterface.h",
+)
+
+factory_registry_header(
+    name = "gen_video_factories",
+    interface = "VideoInterface",
+    factories = [
+        "TestVideo",
+        "ImagesVideo",
+        "SplitVideo",
+        "TruncateVideo",
+        "PangoVideo",
+        "DebayerVideo",
+        "ShiftVideo",
+        "TransformVideo",
+        "UnpackVideo",
+        "PackVideo",
+        "JoinVideo",
+        "MergeVideo",
+        "JsonVideo",
+        "MjpegVideo",
+    ] + select({
+        WINDOWS: [],
+        # shared_memory.cpp (unix-only source) also defines
+        # RegisterSharedMemoryVideoFactory; upstream never calls it.
+        "//conditions:default": ["ThreadVideo"],
+    }),
+    out = "gen/pangolin/factory/RegisterFactoriesVideoInterface.h",
+)
+
+factory_registry_header(
+    name = "gen_video_output_factories",
+    interface = "VideoOutputInterface",
+    factories = [
+        "ImagesVideoOutput",
+        "PangoVideoOutput",
+    ],
+    out = "gen/pangolin/factory/RegisterFactoriesVideoOutputInterface.h",
+)
+
+# ---------------------------------------------------------------------------
+# pango_core
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_core",
+    srcs = [
+        "components/pango_core/src/avx_math.cpp",
+        "components/pango_core/src/factory/factory_help.cpp",
+        "components/pango_core/src/factory/factory_registry.cpp",
+        "components/pango_core/src/file_extension.cpp",
+        "components/pango_core/src/file_utils.cpp",
+        "components/pango_core/src/param_set.cpp",
+        "components/pango_core/src/sigstate.cpp",
+        "components/pango_core/src/threadedfilebuf.cpp",
+        "components/pango_core/src/uri.cpp",
+    ] + select({
+        WINDOWS: [],
+        "//conditions:default": [
+            "components/pango_core/src/posix/condition_variable.cpp",
+            "components/pango_core/src/posix/semaphore.cpp",
+            "components/pango_core/src/posix/shared_memory_buffer.cpp",
+        ],
+    }),
+    hdrs = glob([
+        "components/pango_core/include/**/*.h",
+        "components/pango_core/include/**/*.hpp",
+    ], allow_empty = True),
+    includes = ["components/pango_core/include"],
+    copts = CXX17_COPTS,
+    defines = select({
+        WINDOWS: ["_WIN_"],
+        "//conditions:default": ["_LINUX_"],
+    }),
+    linkopts = select({
+        WINDOWS: [
+            "/DEFAULTLIB:shlwapi.lib",
+            "/DEFAULTLIB:shell32.lib",  # SHGetFolderPathW (PathExpand)
+        ],
+        "//conditions:default": [
+            "-lpthread",
+            "-ldl",
+            "-lrt",
+        ],
+    }),
+)
+
+# ---------------------------------------------------------------------------
+# pango_vars
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_vars",
+    srcs = [
+        "components/pango_vars/src/vars.cpp",
+        "components/pango_vars/src/varstate.cpp",
+    ],
+    hdrs = glob([
+        "components/pango_vars/include/**/*.h",
+        "components/pango_vars/include/**/*.hpp",
+    ], allow_empty = True),
+    includes = ["components/pango_vars/include"],
+    copts = CXX17_COPTS,
+    deps = [":pango_core"],
+)
+
+# ---------------------------------------------------------------------------
+# pango_image (Eigen required; optional codec backends disabled)
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_image",
+    srcs = [
+        "components/pango_image/src/image_io.cpp",
+        "components/pango_image/src/image_io_bmp.cpp",
+        "components/pango_image/src/image_io_exr.cpp",
+        "components/pango_image/src/image_io_jpg.cpp",
+        "components/pango_image/src/image_io_libraw.cpp",
+        "components/pango_image/src/image_io_lz4.cpp",
+        "components/pango_image/src/image_io_packed12bit.cpp",
+        "components/pango_image/src/image_io_pango.cpp",
+        "components/pango_image/src/image_io_png.cpp",
+        "components/pango_image/src/image_io_ppm.cpp",
+        "components/pango_image/src/image_io_raw.cpp",
+        "components/pango_image/src/image_io_tga.cpp",
+        "components/pango_image/src/image_io_tiff.cpp",
+        "components/pango_image/src/image_io_zstd.cpp",
+        "components/pango_image/src/pixel_format.cpp",
+    ],
+    hdrs = glob([
+        "components/pango_image/include/**/*.h",
+        "components/pango_image/include/**/*.hpp",
+    ], allow_empty = True),
+    includes = ["components/pango_image/include"],
+    copts = CXX17_COPTS,
+    defines = ["HAVE_EIGEN"],
+    deps = [
+        ":pango_core",
+        "@eigen3//:eigen",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# pango_packetstream
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_packetstream",
+    srcs = [
+        "components/pango_packetstream/src/packet.cpp",
+        "components/pango_packetstream/src/packetstream.cpp",
+        "components/pango_packetstream/src/packetstream_reader.cpp",
+        "components/pango_packetstream/src/packetstream_writer.cpp",
+        "components/pango_packetstream/src/playback_session.cpp",
+    ],
+    hdrs = glob([
+        "components/pango_packetstream/include/**/*.h",
+        "components/pango_packetstream/include/**/*.hpp",
+    ], allow_empty = True),
+    includes = ["components/pango_packetstream/include"],
+    copts = CXX17_COPTS,
+    # upstream: target_compile_definitions(... PANGOLIN_VERSION_STRING="${PANGOLIN_VERSION}")
+    # \" quoting works for both MSVC (response file) and gcc (command line).
+    defines = ['PANGOLIN_VERSION_STRING=\\"0.9.3\\"'],
+    deps = [":pango_core"],
+)
+
+# ---------------------------------------------------------------------------
+# tinyobj
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "tinyobj",
+    srcs = ["components/tinyobj/src/tinyobj.cpp"],
+    hdrs = glob([
+        "components/tinyobj/include/**/*.h",
+        "components/tinyobj/include/**/*.hpp",
+    ], allow_empty = True),
+    includes = ["components/tinyobj/include"],
+    copts = CXX17_COPTS,
+)
+
+# ---------------------------------------------------------------------------
+# pango_geometry
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_geometry",
+    srcs = [
+        "components/pango_geometry/src/geometry.cpp",
+        "components/pango_geometry/src/geometry_obj.cpp",
+        "components/pango_geometry/src/geometry_ply.cpp",
+    ],
+    hdrs = glob([
+        "components/pango_geometry/include/**/*.h",
+        "components/pango_geometry/include/**/*.hpp",
+    ], allow_empty = True),
+    includes = ["components/pango_geometry/include"],
+    copts = CXX17_COPTS,
+    defines = ["HAVE_EIGEN"],
+    deps = [
+        ":pango_core",
+        ":pango_image",
+        ":tinyobj",
+        "@eigen3//:eigen",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# pango_opengl (fonts.cpp / shaders.cpp generated above)
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_opengl",
+    srcs = [
+        "components/pango_opengl/src/glchar.cpp",
+        "components/pango_opengl/src/gldraw.cpp",
+        "components/pango_opengl/src/glfont.cpp",
+        "components/pango_opengl/src/gltext.cpp",
+        "components/pango_opengl/src/glpangoglu.cpp",
+        "components/pango_opengl/src/gltexturecache.cpp",
+        "components/pango_opengl/src/viewport.cpp",
+        "components/pango_opengl/src/opengl_render_state.cpp",
+        ":gen_pango_fonts",
+        ":gen_pango_shaders",
+    ],
+    hdrs = glob([
+        "components/pango_opengl/include/**/*.h",
+        "components/pango_opengl/include/**/*.hpp",
+    ], allow_empty = True) + [
+        # vendored stb header included directly from src/
+        "components/pango_opengl/src/stb_truetype.h",
+    ],
+    includes = ["components/pango_opengl/include"],
+    copts = CXX17_COPTS,
+    # Upstream picks libepoxy on Linux and GLEW elsewhere; rules_pangolin
+    # uses GLEW on every OS (see build_glew.bazel).
+    defines = [
+        "HAVE_EIGEN",
+        "HAVE_GLEW",
+    ],
+    deps = [
+        ":pango_core",
+        ":pango_image",
+        "@eigen3//:eigen",
+        "@glew//:glew",
+    ] + select({
+        # glplatform.h includes <GL/gl.h> on non-GLES platforms; on Windows
+        # this header comes from the Windows SDK.
+        WINDOWS: [],
+        "//conditions:default": ["@glvnd//:gl_legacy_headers"],
+    }),
+)
+
+# ---------------------------------------------------------------------------
+# pango_windowing
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_windowing",
+    srcs = [
+        "components/pango_windowing/src/window.cpp",
+    ] + select({
+        WINDOWS: ["components/pango_windowing/src/display_win.cpp"],
+        "//conditions:default": ["components/pango_windowing/src/display_x11.cpp"],
+    }),
+    hdrs = glob([
+        "components/pango_windowing/include/**/*.h",
+        "components/pango_windowing/include/**/*.hpp",
+    ], allow_empty = True) + [":gen_window_factories"],
+    includes = [
+        "components/pango_windowing/include",
+        "gen",
+    ],
+    copts = CXX17_COPTS,
+    defines = select({
+        WINDOWS: ['PANGO_DEFAULT_WIN_URI=\\"winapi\\"'],
+        "//conditions:default": ['PANGO_DEFAULT_WIN_URI=\\"x11\\"'],
+    }),
+    linkopts = select({
+        WINDOWS: [
+            "/DEFAULTLIB:user32.lib",
+            "/DEFAULTLIB:gdi32.lib",
+        ],
+        # Link against the system X11/EGL runtime libraries by soname; no
+        # -dev packages required (headers come from @libx11/@xorgproto/
+        # @egl_registry).
+        "//conditions:default": [
+            "-l:libX11.so.6",
+            "-l:libEGL.so.1",
+        ],
+    }),
+    deps = [
+        ":pango_core",
+        ":pango_opengl",
+    ] + select({
+        WINDOWS: [],
+        "//conditions:default": [
+            "@egl_registry//:egl_headers",
+            "@libx11//:x11_headers",
+            "@xorgproto//:x11_proto_headers",
+        ],
+    }),
+)
+
+# ---------------------------------------------------------------------------
+# pango_display
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_display",
+    srcs = [
+        "components/pango_display/src/ConsoleView.cpp",
+        "components/pango_display/src/default_font.cpp",
+        "components/pango_display/src/display.cpp",
+        "components/pango_display/src/handler.cpp",
+        "components/pango_display/src/handler_glbuffer.cpp",
+        "components/pango_display/src/handler_image.cpp",
+        "components/pango_display/src/image_view.cpp",
+        "components/pango_display/src/pangolin_gl.cpp",
+        "components/pango_display/src/process.cpp",
+        "components/pango_display/src/view.cpp",
+        "components/pango_display/src/widgets.cpp",
+    ],
+    hdrs = glob([
+        "components/pango_display/include/**/*.h",
+        "components/pango_display/include/**/*.hpp",
+    ], allow_empty = True) + [
+        # private header shared between pango_display sources
+        "components/pango_display/src/pangolin_gl.h",
+    ],
+    includes = ["components/pango_display/include"],
+    copts = CXX17_COPTS,
+    deps = [
+        ":pango_core",
+        ":pango_image",
+        ":pango_opengl",
+        ":pango_vars",
+        ":pango_windowing",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# pango_glgeometry / pango_scene
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_glgeometry",
+    srcs = ["components/pango_glgeometry/src/glgeometry.cpp"],
+    hdrs = glob([
+        "components/pango_glgeometry/include/**/*.h",
+        "components/pango_glgeometry/include/**/*.hpp",
+    ], allow_empty = True),
+    includes = ["components/pango_glgeometry/include"],
+    copts = CXX17_COPTS,
+    deps = [
+        ":pango_geometry",
+        ":pango_opengl",
+    ],
+)
+
+cc_library(
+    name = "pango_scene",
+    srcs = ["components/pango_scene/src/renderable.cpp"],
+    hdrs = glob([
+        "components/pango_scene/include/**/*.h",
+        "components/pango_scene/include/**/*.hpp",
+    ], allow_empty = True),
+    includes = ["components/pango_scene/include"],
+    copts = CXX17_COPTS,
+    deps = [":pango_opengl"],
+)
+
+# ---------------------------------------------------------------------------
+# pango_plot
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_plot",
+    srcs = [
+        "components/pango_plot/src/datalog.cpp",
+        "components/pango_plot/src/loaders/csv_table_loader.cpp",
+        "components/pango_plot/src/plotter.cpp",
+    ],
+    hdrs = glob([
+        "components/pango_plot/include/**/*.h",
+        "components/pango_plot/include/**/*.hpp",
+    ], allow_empty = True),
+    includes = ["components/pango_plot/include"],
+    copts = CXX17_COPTS,
+    deps = [":pango_display"],
+)
+
+# ---------------------------------------------------------------------------
+# pango_video (driver backends limited to the dependency-free set)
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_video",
+    srcs = [
+        "components/pango_video/src/stream_encoder_factory.cpp",
+        "components/pango_video/src/video.cpp",
+        "components/pango_video/src/video_help.cpp",
+        "components/pango_video/src/video_input.cpp",
+        "components/pango_video/src/video_output.cpp",
+        "components/pango_video/src/drivers/debayer.cpp",
+        "components/pango_video/src/drivers/images.cpp",
+        "components/pango_video/src/drivers/images_out.cpp",
+        "components/pango_video/src/drivers/join.cpp",
+        "components/pango_video/src/drivers/json.cpp",
+        "components/pango_video/src/drivers/merge.cpp",
+        "components/pango_video/src/drivers/mjpeg.cpp",
+        "components/pango_video/src/drivers/pack.cpp",
+        "components/pango_video/src/drivers/pango.cpp",
+        "components/pango_video/src/drivers/pango_video_output.cpp",
+        "components/pango_video/src/drivers/shift.cpp",
+        "components/pango_video/src/drivers/split.cpp",
+        "components/pango_video/src/drivers/test.cpp",
+        "components/pango_video/src/drivers/thread.cpp",
+        "components/pango_video/src/drivers/transform.cpp",
+        "components/pango_video/src/drivers/truncate.cpp",
+        "components/pango_video/src/drivers/unpack.cpp",
+    ] + select({
+        WINDOWS: [],
+        "//conditions:default": ["components/pango_video/src/drivers/shared_memory.cpp"],
+    }),
+    hdrs = glob([
+        "components/pango_video/include/**/*.h",
+        "components/pango_video/include/**/*.hpp",
+    ], allow_empty = True) + [
+        ":gen_video_factories",
+        ":gen_video_output_factories",
+    ],
+    includes = [
+        "components/pango_video/include",
+        "gen",
+    ],
+    copts = CXX17_COPTS,
+    deps = [
+        ":pango_core",
+        ":pango_image",
+        ":pango_packetstream",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# pango_tools
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pango_tools",
+    srcs = ["components/pango_tools/src/video_viewer.cpp"],
+    hdrs = glob([
+        "components/pango_tools/include/**/*.h",
+        "components/pango_tools/include/**/*.hpp",
+    ], allow_empty = True),
+    includes = ["components/pango_tools/include"],
+    copts = CXX17_COPTS,
+    deps = [
+        ":pango_display",
+        ":pango_video",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# Umbrella target: everything reachable from #include <pangolin/pangolin.h>
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "pangolin",
+    deps = [
+        ":pango_core",
+        ":pango_display",
+        ":pango_glgeometry",
+        ":pango_geometry",
+        ":pango_image",
+        ":pango_opengl",
+        ":pango_packetstream",
+        ":pango_plot",
+        ":pango_scene",
+        ":pango_tools",
+        ":pango_vars",
+        ":pango_video",
+        ":pango_windowing",
+        ":tinyobj",
+        "@eigen3//:eigen",
+    ],
+)

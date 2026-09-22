@@ -1,0 +1,15 @@
+# Overlay for https://github.com/NVIDIA/libglvnd (headers only: the legacy
+# "system" GL headers GL/gl.h, GL/glx.h, GL/glext.h, ...). These are the
+# headers normally installed by libgl-dev/libglx-dev; with this overlay no
+# system GL development packages are needed (on Windows GL/gl.h comes from
+# the Windows SDK instead).
+cc_library(
+    name = "gl_legacy_headers",
+    hdrs = glob([
+        "include/GL/*",
+        "include/GL/**",
+        "include/KHR/*",
+    ], allow_empty = True),
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)

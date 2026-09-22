@@ -1,0 +1,14 @@
+# Overlay for https://gitlab.freedesktop.org/xorg/proto/xorgproto
+# (headers only: X.h, Xfuncproto.h, Xosdefs.h, keysym.h, extensions/, ...).
+#
+# Note: bazel's `**` glob does not match files directly under the glob root,
+# so include/X11/*.h needs its own pattern.
+cc_library(
+    name = "x11_proto_headers",
+    hdrs = glob([
+        "include/X11/*.h",
+        "include/X11/**/*.h",
+    ], allow_empty = True),
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)

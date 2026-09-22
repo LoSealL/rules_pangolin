@@ -1,0 +1,17 @@
+# Overlay for https://gitlab.com/libeigen/eigen (3.4.0), applied via
+# git_repository(build_file = ...) in pangolin/repositories.bzl.
+#
+# The Eigen top-level module headers (Eigen/Geometry, Eigen/Core, ...) are
+# files WITHOUT a .h extension, so the globs must not filter by suffix.
+# "dir/*" plus "dir/**" is needed because bazel's `**` alone does not match
+# files directly under the glob root.
+cc_library(
+    name = "eigen",
+    hdrs = glob([
+        "Eigen/*",
+        "Eigen/**",
+        "unsupported/**",
+    ], allow_empty = True),
+    includes = ["."],
+    visibility = ["//visibility:public"],
+)

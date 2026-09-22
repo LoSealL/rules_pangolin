@@ -1,0 +1,16 @@
+package(default_visibility = ["//visibility:public"])
+
+# This directory is also symlinked verbatim into the generated
+# `pangolin_tools` repository (see tools_repository.bzl), where `gen_embed`
+# is compiled as an exec tool for the @pangolin build.
+cc_binary(
+    name = "gen_embed",
+    srcs = ["gen_embed.cc"],
+)
+
+exports_files([
+    "BUILD.bazel",
+    "embed.bzl",
+    "gen_embed.cc",
+    "tools_repository.bzl",
+])

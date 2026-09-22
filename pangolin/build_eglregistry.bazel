@@ -1,0 +1,11 @@
+# Overlay for https://github.com/KhronosGroup/EGL-Registry (headers only:
+# api/EGL/egl.h + KHR/khrplatform.h, used by the X11 windowing backend).
+cc_library(
+    name = "egl_headers",
+    hdrs = glob([
+        "api/EGL/*.h",
+        "api/KHR/*.h",
+    ], allow_empty = True),
+    includes = ["api"],
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,5 @@
+# `test` is an independent Bazel workspace that consumes rules_pangolin via
+# local_path_override; it is excluded from this repository's build (see
+# .bazelignore). Keep it in sync with this file.
+
+build --verbose_failures

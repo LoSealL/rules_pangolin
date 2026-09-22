@@ -1,0 +1,31 @@
+# Consumer workspace for rules_pangolin: fetches Pangolin v0.9.3 through the
+# module extension and builds/links/runs tests against it on Windows (MSVC)
+# and Linux (gcc, WSL).
+
+# Pangolin is a C++17 library (CMAKE_CXX_STANDARD 17 upstream); consumers
+# must compile with C++17 too.
+CXX17_COPTS = select({
+    "@platforms//os:windows": [
+        "/std:c++17",
+        "/utf-8",
+    ],
+    "//conditions:default": ["-std=c++17"],
+})
+
+cc_test(
+    name = "pangolin_core_test",
+    srcs = ["core_test.cc"],
+    copts = CXX17_COPTS,
+    deps = [
+        "@pangolin//:pango_core",
+        "@pangolin//:pango_image",
+        "@pangolin//:pango_vars",
+    ],
+)
+
+cc_test(
+    name = "pangolin_smoke_test",
+    srcs = ["smoke_test.cc"],
+    copts = CXX17_COPTS,
+    deps = ["@pangolin//:pangolin"],
+)

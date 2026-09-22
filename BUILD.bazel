@@ -1,0 +1,3 @@
+# Intentionally empty: rules_pangolin ships no buildable targets of its own.
+# Everything is materialized by the module extension in pangolin/extensions.bzl
+# into the generated @pangolin repository. See test/ for a consumer workspace.

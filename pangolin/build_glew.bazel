@@ -1,0 +1,39 @@
+# Overlay for GLEW 2.2.0, applied via http_archive(build_file = ...) in
+# pangolin/repositories.bzl (the GLEW git repository does not contain the
+# generated include/GL headers, so the release tarball is used).
+#
+# Pangolin's glplatform.h includes <GL/glew.h> when HAVE_GLEW is defined.
+# GLEW is used on every OS: upstream CMake picks libepoxy on Linux, but
+# epoxy has no Bazel-friendly source distribution - the HAVE_GLEW path is
+# upstream-supported on all platforms. GLEW_STATIC is public so consumers of
+# the headers do not declare dllimport; GLEW_NO_GLU skips <GL/glu.h>, which
+# is not provided by the Khronos OpenGL registry headers.
+cc_library(
+    name = "glew",
+    srcs = ["src/glew.c"],
+    hdrs = glob(["include/GL/*.h"]),
+    includes = ["include"],
+    defines = [
+        "GLEW_STATIC",
+        "GLEW_NO_GLU",
+    ],
+    linkopts = select({
+        "@platforms//os:windows": ["/DEFAULTLIB:opengl32.lib"],
+        # link against the system runtime libraries by soname; -lGL/-lX11
+        # would require the -dev packages to provide the .so symlinks
+        "//conditions:default": [
+            "-l:libGL.so.1",
+            "-l:libX11.so.6",
+        ],
+    }),
+    deps = select({
+        "@platforms//os:windows": [],
+        # glxew.h includes <GL/glx.h> and <X11/Xlib.h>
+        "//conditions:default": [
+            "@glvnd//:gl_legacy_headers",
+            "@libx11//:x11_headers",
+            "@xorgproto//:x11_proto_headers",
+        ],
+    }),
+    visibility = ["//visibility:public"],
+)

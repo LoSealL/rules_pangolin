@@ -1,0 +1,13 @@
+{
+  "homepage": "https://github.com/loseall/rules_pangolin",
+  "maintainers": [
+    {
+      "name": "Wenyi Tang",
+      "email": "wenyitang@outlook.com",
+      "github": "loseall"
+    }
+  ],
+  "repository": ["github:loseall/rules_pangolin"],
+  "versions": [],
+  "yanked_versions": {}
+}

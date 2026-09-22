@@ -1,0 +1,16 @@
+package(default_visibility = ["//visibility:public"])
+
+# Overlay BUILD files applied to the third-party git repositories created by
+# the module extension in extensions.bzl. Referenced from repositories.bzl
+# with labels relative to this module's repository (e.g. //pangolin:...).
+exports_files([
+    "build_pangolin.bazel",
+    "build_eigen.bazel",
+    "build_glew.bazel",
+    "build_libx11.bazel",
+    "build_xorgproto.bazel",
+    "build_glvnd.bazel",
+    "build_eglregistry.bazel",
+    "extensions.bzl",
+    "repositories.bzl",
+])

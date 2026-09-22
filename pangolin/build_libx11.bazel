@@ -1,0 +1,15 @@
+# Overlay for https://gitlab.freedesktop.org/xorg/lib/libx11 (headers only:
+# Xlib.h, Xutil.h, ...). X11 runtime libraries are linked by soname from the
+# system (see build_pangolin.bazel); no system development packages needed.
+#
+# Note: bazel's `**` glob does not match files directly under the glob root,
+# so include/X11/*.h needs its own pattern.
+cc_library(
+    name = "x11_headers",
+    hdrs = glob([
+        "include/X11/*.h",
+        "include/X11/**/*.h",
+    ], allow_empty = True),
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)
